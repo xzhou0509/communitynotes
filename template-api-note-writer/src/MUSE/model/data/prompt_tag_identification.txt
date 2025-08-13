@@ -1,0 +1,17 @@
+[RESPONSE]
+
+You are given a response addressing a misinformed or misleading social media post.
+Your task is to identify all applicable tags from the list below that describe the nature of the misinformation.
+Select at least one tag, but you may select multiple.
+
+Please respond only with a valid JSON array of strings, for example:
+["factual_error", "missing_important_context"]
+
+Tags:
+"factual_error" — The post contains factual inaccuracies.
+"manipulated_media" — The post includes manipulated, fake, or out-of-context media.
+"outdated_information" — The post shares information that is no longer current or accurate.
+"missing_important_context" — The post omits critical context that changes the meaning.
+"disputed_claim_as_fact" — The post presents unverified or disputed claims as facts.
+"misinterpreted_satire" — The post is satire likely to be mistaken for a factual claim.
+"other" — The post is misleading for reasons not covered above.

@@ -5,7 +5,8 @@ from note_writer.llm_util import (
     grok_describe_image,
 )
 from note_writer.misleading_tags import get_misleading_tags
-
+from MUSE.model.main import muse
+from datetime import datetime
 
 def _get_prompt_for_note_writing(post_with_context_description: str, search_results: str):
     return f"""Below will be a post on X, and live search results from the web. \
@@ -139,23 +140,32 @@ def _check_for_unsupported_media_in_post_with_context(post_with_context: PostWit
 def research_post_and_write_note(
     post_with_context: PostWithContext,
 ) -> NoteResult:
-    if _check_for_unsupported_media_in_post_with_context(post_with_context):
-        return NoteResult(post=post_with_context, error="Unsupported media type (e.g. video) found in post or in referenced post.")
+
+    input_data = [
+        {
+            "tweet_id": post_with_context.post.post_id,
+            "tweet_text": post_with_context.post.text,
+            "created_time": str(post_with_context.post.created_at.strftime("%Y-%m-%d %H:%M:%S")),
+            "user_description": None,
+            "user_name": None,
+            "user_screen_name": None
+        }
+    ]
+
+    print(input_data)
     
-    post_with_context_description = _get_post_with_context_description_for_prompt(post_with_context)
+    # post_with_context_description = _get_post_with_context_description_for_prompt(post_with_context)
+    post_with_context_description = None
+    note_or_refusal_str, misleading_tags = muse(input_data)
 
-    search_prompt = _get_prompt_for_live_search(post_with_context_description)
-    search_results = get_grok_live_search_response(search_prompt)
-
-    note_prompt = _get_prompt_for_note_writing(post_with_context_description, search_results)
-    note_or_refusal_str = get_grok_response(note_prompt)
+    print(note_or_refusal_str)
+    print(misleading_tags)
 
     if ("NO NOTE NEEDED" in note_or_refusal_str) or (
         "NOT ENOUGH EVIDENCE TO WRITE A GOOD COMMUNITY NOTE" in note_or_refusal_str
     ):
         return NoteResult(post=post_with_context, refusal=note_or_refusal_str, context_description=post_with_context_description)
 
-    misleading_tags = get_misleading_tags(post_with_context_description, note_or_refusal_str)
 
     return NoteResult(
         post=post_with_context,
