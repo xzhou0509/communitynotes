@@ -29,6 +29,29 @@ from huggingface_hub import InferenceClient
 from openai import OpenAI
 from selenium.webdriver.firefox.service import Service
 
+
+_CTX = multiprocessing.get_context("spawn")
+_POOL = None
+
+def _get_pool(n=5):
+    global _POOL
+    if _POOL is None:
+        _POOL = _CTX.Pool(processes=n)
+    return _POOL
+
+def _get_pool(n=5):
+    global _POOL
+    if _POOL is None:
+        _POOL = _CTX.Pool(processes=n)
+    return _POOL
+
+def shutdown_pool():
+    global _POOL
+    if _POOL is not None:
+        _POOL.close()
+        _POOL.join()
+        _POOL = None
+
 def llama(api_key, prompt):
     client = InferenceClient("meta-llama/Meta-Llama-3.1-70B-Instruct", token=api_key)
     response = []
@@ -813,8 +836,7 @@ def muse(data_json, tweet_modality="unimodal"):
     driver.set_page_load_timeout(10)
 
     # Set the number of processes = 5
-    multiprocessing.set_start_method('spawn')
-    pool = multiprocessing.Pool(processes=5)
+    pool = _get_pool(5)
 
     #### When misinformation is unimodal ####
     if instance['tweet_modality'] == 'unimodal':
@@ -1089,5 +1111,4 @@ def muse(data_json, tweet_modality="unimodal"):
     instance['correction_tags'] = tags_identify(instance['correction'], llm_key)
 
     driver.quit()
-    pool.close()
     return instance['condensed_correction'], instance['correction_tags']
