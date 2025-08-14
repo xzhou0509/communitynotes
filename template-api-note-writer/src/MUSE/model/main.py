@@ -72,12 +72,11 @@ def gpt(api_key, prompt):
     curr_tries = 1
     while curr_tries <= max_retries:
         try:
-            client = OpenAI(api_key=api_key)
+            client = OpenAI(api_key=api_key.strip(), timeout=10)
             response = client.chat.completions.create(
-                model='gpt-4',
+                model='gpt-4o',
                 messages=[{'role': 'user', 'content': prompt}],
-                temperature=0,
-                timeout=10
+                temperature=0
             )
             message = response.choices[0].message.content
             return message
@@ -269,6 +268,7 @@ If the given tweet is not informative enough to generate a query, you should ans
     # Prepare the prompt
     prompt = prompt_format.replace('[POST_CONTENT]', post_content)
     # Generate queries with GPT-4
+    print("querying to gpt...")
     response = gpt(llm_key, prompt)
 
     return response
@@ -836,74 +836,24 @@ def muse(data_json, tweet_modality="unimodal"):
     driver.set_page_load_timeout(10)
 
     # Set the number of processes = 5
-    pool = _get_pool(5)
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Pool(processes=5) as pool:
+        if instance['tweet_modality'] == 'unimodal':
 
-    #### When misinformation is unimodal ####
-    if instance['tweet_modality'] == 'unimodal':
+            print('Start correcting unimodal misinformation...')
 
-        print('Start correcting unimodal misinformation...')
-
-        print('Generate queries from misinformation...')
-        instance['queries'] = query_generation(instance, llm_key)
-
-        refute_evidences, context_evidences = set(), set()
-        for domain_priority in ['High', 'Medium', 'Low']:
-            print('Search web pages with ' + domain_priority + ' priority...')
-            search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority+'-Priority'], instance, domain_priority)
-
-            print('Start selecting retrieved web pages...')
-
-            # Filtered based on their similarities with the query
-            filtered_search_links = filter_search_results_by_query_sim(search_results, 3)
-
-            print('Extract retrieved web page content...')
-            searched_articles = article_crawler(filtered_search_links, driver)
-            if searched_articles == []:
-                print('\t(no article found)')
-                continue
-
-            # # Filtered based on their publication times
-            # # Used to simulate correcting misinfo immediately after its appearance
-            # filtered_searched_articles = filter_search_results_by_time(instance, searched_articles)
-            # if filtered_searched_articles == []:
-            #     print('\t(no article qualified based on time)')
-            #     continue
-            filtered_searched_articles = searched_articles
-
-            # Filtered based on their similarities with the misinfo content
-            print('Compute the similarity between web page and misinformation content...')
-            params = [(instance, article) for article in filtered_searched_articles]
-            list_of_articleUrl_textSim = pool.starmap(compute_unimodal_sims, params)
-            final_searched_articles = filter_search_results_by_unimodal_sim(list_of_articleUrl_textSim, filtered_searched_articles)
-            if final_searched_articles == []:
-                print('\t(no article qualified based on similarity)')
-                continue
-
-            print('Extract evidence from selected web pages...')
-            params = [(instance, article, llm_key) for article in final_searched_articles]
-            evidences = pool.starmap(evidence_extraction, params)
-
-            for refute_evidence, context_evidence in evidences:
-                refute_evidences = refute_evidences.union(set(refute_evidence))
-                context_evidences = context_evidences.union(set(context_evidence))
-
-            if len(refute_evidences) >= 3:
-                print('\t(stop with sufficient refutations)')
-                break
-
-        if len(refute_evidences) == 0:
-            print('\nExtend web search due to no refutations...')
+            print('Generate queries from misinformation...')
+            instance['queries'] = query_generation(instance, llm_key)
 
             refute_evidences, context_evidences = set(), set()
             for domain_priority in ['High', 'Medium', 'Low']:
                 print('Search web pages with ' + domain_priority + ' priority...')
-                search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority + '-Priority'],
-                                              instance, domain_priority)
+                search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority+'-Priority'], instance, domain_priority)
 
                 print('Start selecting retrieved web pages...')
 
                 # Filtered based on their similarities with the query
-                filtered_search_links = filter_search_results_by_query_sim(search_results, 10)
+                filtered_search_links = filter_search_results_by_query_sim(search_results, 3)
 
                 print('Extract retrieved web page content...')
                 searched_articles = article_crawler(filtered_search_links, driver)
@@ -923,8 +873,7 @@ def muse(data_json, tweet_modality="unimodal"):
                 print('Compute the similarity between web page and misinformation content...')
                 params = [(instance, article) for article in filtered_searched_articles]
                 list_of_articleUrl_textSim = pool.starmap(compute_unimodal_sims, params)
-                final_searched_articles = filter_search_results_by_unimodal_sim(list_of_articleUrl_textSim,
-                                                                                filtered_searched_articles)
+                final_searched_articles = filter_search_results_by_unimodal_sim(list_of_articleUrl_textSim, filtered_searched_articles)
                 if final_searched_articles == []:
                     print('\t(no article qualified based on similarity)')
                     continue
@@ -941,111 +890,108 @@ def muse(data_json, tweet_modality="unimodal"):
                     print('\t(stop with sufficient refutations)')
                     break
 
-        refute_evidences = list(refute_evidences)
-        context_evidences = list(context_evidences)
+            if len(refute_evidences) == 0:
+                print('\nExtend web search due to no refutations...')
 
-        instance['refute_evidence'] = refute_evidences
-        instance['context_evidence'] = context_evidences
+                refute_evidences, context_evidences = set(), set()
+                for domain_priority in ['High', 'Medium', 'Low']:
+                    print('Search web pages with ' + domain_priority + ' priority...')
+                    search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority + '-Priority'],
+                                                instance, domain_priority)
 
-        evidences = refute_evidences + context_evidences
+                    print('Start selecting retrieved web pages...')
 
-        print('Generate correction with ' + str(len(refute_evidences)) + ' refutations...')
-        instance['correction'] = correction_generation(instance, evidences, refute_evidences, llm_key)
+                    # Filtered based on their similarities with the query
+                    filtered_search_links = filter_search_results_by_query_sim(search_results, 10)
 
-    #### When misinformation is multimodal ####
-    elif instance['tweet_modality'] == 'multimodal':
+                    print('Extract retrieved web page content...')
+                    searched_articles = article_crawler(filtered_search_links, driver)
+                    if searched_articles == []:
+                        print('\t(no article found)')
+                        continue
 
-        print('Start correcting multimodal misinformation...')
+                    # # Filtered based on their publication times
+                    # # Used to simulate correcting misinfo immediately after its appearance
+                    # filtered_searched_articles = filter_search_results_by_time(instance, searched_articles)
+                    # if filtered_searched_articles == []:
+                    #     print('\t(no article qualified based on time)')
+                    #     continue
+                    filtered_searched_articles = searched_articles
 
-        # Process images
-        instance['tweet_images'] = []
-        with open('data/image_url.json', 'r') as f:
-            imgId_imgUrl = json.load(f)
-        for img_id, img_url in imgId_imgUrl.items():
-            if instance["tweet_id"] == img_id.split('_')[0] and img_url != '':
-                instance["tweet_images"].append(img_url)
+                    # Filtered based on their similarities with the misinfo content
+                    print('Compute the similarity between web page and misinformation content...')
+                    params = [(instance, article) for article in filtered_searched_articles]
+                    list_of_articleUrl_textSim = pool.starmap(compute_unimodal_sims, params)
+                    final_searched_articles = filter_search_results_by_unimodal_sim(list_of_articleUrl_textSim,
+                                                                                    filtered_searched_articles)
+                    if final_searched_articles == []:
+                        print('\t(no article qualified based on similarity)')
+                        continue
 
-        print('Generate textual description of images...')
-        instance = image2text(instance, llm_key)
+                    print('Extract evidence from selected web pages...')
+                    params = [(instance, article, llm_key) for article in final_searched_articles]
+                    evidences = pool.starmap(evidence_extraction, params)
 
-        print('Generate queries from misinformation...')
-        instance['queries'] = query_generation(instance, llm_key)
+                    for refute_evidence, context_evidence in evidences:
+                        refute_evidences = refute_evidences.union(set(refute_evidence))
+                        context_evidences = context_evidences.union(set(context_evidence))
 
-        refute_evidences, context_evidences = set(), set()
-        for domain_priority in ['High', 'Medium', 'Low']:
-            print('Search web pages with ' + domain_priority + ' priority...')
-            search_results = {}
-            filtered_search_links = set()
-            for page_num in range(5):
-                print('\t(page ' + str(page_num+1) + ')')
-                search_results.update(multimodal_search(serpapi_key, instance, page_num))
-                if search_results['page_' + str(page_num+1)] == {}:
-                    # print(search_results)
-                    print("\t(stop with no web pages)")
-                    break
-                filtered_search_links = filtered_search_links.union(
-                    filter_search_results_by_domain(search_results, domain_priority, page_num))
-                if len(filtered_search_links) > 10:
-                    print("\t(stop with sufficient web pages)")
-                    break
-            filtered_search_links = list(filtered_search_links)
-            # for l in filtered_search_links:
-            #     print(l)
+                    if len(refute_evidences) >= 3:
+                        print('\t(stop with sufficient refutations)')
+                        break
 
-            print('Start selecting retrieved web pages...')
+            refute_evidences = list(refute_evidences)
+            context_evidences = list(context_evidences)
 
-            print('Extract retrieved web page content...')
-            searched_articles = article_crawler(filtered_search_links, driver)
-            if searched_articles == []:
-                print('\t(no article found)')
-                continue
+            instance['refute_evidence'] = refute_evidences
+            instance['context_evidence'] = context_evidences
 
-            # # Filtered based on their publication times
-            # # Used to simulate correcting misinfo immediately after its appearance
-            # filtered_searched_articles = filter_search_results_by_time(instance, searched_articles)
-            # if filtered_searched_articles == []:
-            #     print('\t(no article qualified based on time)')
-            #     continue
-            filtered_searched_articles = searched_articles
+            evidences = refute_evidences + context_evidences
 
-            # Filtered based on their similarities with the misinfo content
-            print('Compute the similarity between web page and misinformation content...')
-            params = [(instance, article) for article in filtered_searched_articles]
-            list_of_articleUrl_mmSims = pool.starmap(compute_multimodal_sims, params)
+            print('Generate correction with ' + str(len(refute_evidences)) + ' refutations...')
+            instance['correction'] = correction_generation(instance, evidences, refute_evidences, llm_key)
 
-            final_searched_articles = filter_search_results_by_multimodal_sim(list_of_articleUrl_mmSims, filtered_searched_articles)
-            if final_searched_articles == []:
-                print("\t(no article qualified based on similarity)")
-                continue
+        #### When misinformation is multimodal ####
+        elif instance['tweet_modality'] == 'multimodal':
 
-            print('Extract evidence from selected web pages...')
-            params = [(instance, article, llm_key) for article in final_searched_articles]
-            evidences = pool.starmap(evidence_extraction, params)
+            print('Start correcting multimodal misinformation...')
 
-            for refute_evidence, context_evidence in evidences:
-                refute_evidences = refute_evidences.union(set(refute_evidence))
-                context_evidences = context_evidences.union(set(context_evidence))
+            # Process images
+            instance['tweet_images'] = []
+            with open('data/image_url.json', 'r') as f:
+                imgId_imgUrl = json.load(f)
+            for img_id, img_url in imgId_imgUrl.items():
+                if instance["tweet_id"] == img_id.split('_')[0] and img_url != '':
+                    instance["tweet_images"].append(img_url)
 
-            if len(refute_evidences) >= 3:
-                print("\t(stop with sufficient refutations)")
-                break
+            print('Generate textual description of images...')
+            instance = image2text(instance, llm_key)
 
-        if len(refute_evidences) < 3:
-            print('\nConduct unimodal web search due to insufficient refutations...')
+            print('Generate queries from misinformation...')
+            instance['queries'] = query_generation(instance, llm_key)
 
-            #### Unimodal search, search filter, and extract evidence ###
+            refute_evidences, context_evidences = set(), set()
             for domain_priority in ['High', 'Medium', 'Low']:
                 print('Search web pages with ' + domain_priority + ' priority...')
-                # Search by text or images
-                image_search_results = reverse_image_search(serpapi_key, instance, 0)
-                text_search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority+'-Priority'], instance, domain_priority)
-
-                print('Start selecting retrieved web pages...')
-                filtered_image_search_links = filter_search_results_by_domain(image_search_results, domain_priority)
-                filtered_text_search_links = filter_search_results_by_query_sim(text_search_results, 3)
-                filtered_search_links = list(set(filtered_text_search_links).union(filtered_image_search_links))
+                search_results = {}
+                filtered_search_links = set()
+                for page_num in range(5):
+                    print('\t(page ' + str(page_num+1) + ')')
+                    search_results.update(multimodal_search(serpapi_key, instance, page_num))
+                    if search_results['page_' + str(page_num+1)] == {}:
+                        # print(search_results)
+                        print("\t(stop with no web pages)")
+                        break
+                    filtered_search_links = filtered_search_links.union(
+                        filter_search_results_by_domain(search_results, domain_priority, page_num))
+                    if len(filtered_search_links) > 10:
+                        print("\t(stop with sufficient web pages)")
+                        break
+                filtered_search_links = list(filtered_search_links)
                 # for l in filtered_search_links:
                 #     print(l)
+
+                print('Start selecting retrieved web pages...')
 
                 print('Extract retrieved web page content...')
                 searched_articles = article_crawler(filtered_search_links, driver)
@@ -1083,19 +1029,72 @@ def muse(data_json, tweet_modality="unimodal"):
                     print("\t(stop with sufficient refutations)")
                     break
 
-        refute_evidences = list(refute_evidences)
-        context_evidences = list(context_evidences)
+            if len(refute_evidences) < 3:
+                print('\nConduct unimodal web search due to insufficient refutations...')
 
-        instance["refute_evidences"] = refute_evidences
-        instance["context_evidences"] = context_evidences
+                #### Unimodal search, search filter, and extract evidence ###
+                for domain_priority in ['High', 'Medium', 'Low']:
+                    print('Search web pages with ' + domain_priority + ' priority...')
+                    # Search by text or images
+                    image_search_results = reverse_image_search(serpapi_key, instance, 0)
+                    text_search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority+'-Priority'], instance, domain_priority)
 
-        evidences = refute_evidences + context_evidences
+                    print('Start selecting retrieved web pages...')
+                    filtered_image_search_links = filter_search_results_by_domain(image_search_results, domain_priority)
+                    filtered_text_search_links = filter_search_results_by_query_sim(text_search_results, 3)
+                    filtered_search_links = list(set(filtered_text_search_links).union(filtered_image_search_links))
+                    # for l in filtered_search_links:
+                    #     print(l)
 
-        print('Generate correction with ' + str(len(refute_evidences)) + ' refutations...')
-        instance['correction'] = correction_generation(instance, evidences, refute_evidences, llm_key)
+                    print('Extract retrieved web page content...')
+                    searched_articles = article_crawler(filtered_search_links, driver)
+                    if searched_articles == []:
+                        print('\t(no article found)')
+                        continue
+
+                    # # Filtered based on their publication times
+                    # # Used to simulate correcting misinfo immediately after its appearance
+                    # filtered_searched_articles = filter_search_results_by_time(instance, searched_articles)
+                    # if filtered_searched_articles == []:
+                    #     print('\t(no article qualified based on time)')
+                    #     continue
+                    filtered_searched_articles = searched_articles
+
+                    # Filtered based on their similarities with the misinfo content
+                    print('Compute the similarity between web page and misinformation content...')
+                    params = [(instance, article) for article in filtered_searched_articles]
+                    list_of_articleUrl_mmSims = pool.starmap(compute_multimodal_sims, params)
+
+                    final_searched_articles = filter_search_results_by_multimodal_sim(list_of_articleUrl_mmSims, filtered_searched_articles)
+                    if final_searched_articles == []:
+                        print("\t(no article qualified based on similarity)")
+                        continue
+
+                    print('Extract evidence from selected web pages...')
+                    params = [(instance, article, llm_key) for article in final_searched_articles]
+                    evidences = pool.starmap(evidence_extraction, params)
+
+                    for refute_evidence, context_evidence in evidences:
+                        refute_evidences = refute_evidences.union(set(refute_evidence))
+                        context_evidences = context_evidences.union(set(context_evidence))
+
+                    if len(refute_evidences) >= 3:
+                        print("\t(stop with sufficient refutations)")
+                        break
+
+            refute_evidences = list(refute_evidences)
+            context_evidences = list(context_evidences)
+
+            instance["refute_evidences"] = refute_evidences
+            instance["context_evidences"] = context_evidences
+
+            evidences = refute_evidences + context_evidences
+
+            print('Generate correction with ' + str(len(refute_evidences)) + ' refutations...')
+            instance['correction'] = correction_generation(instance, evidences, refute_evidences, llm_key)
 
     os.makedirs('data/output/', exist_ok=True)
-    with open('data/output/' + instance["tweet_id"] + ".json", 'w') as f:
+    with open('data/output/' + str(instance["tweet_id"]) + ".json", 'w') as f:
         json.dump(instance, f, indent=4, sort_keys=True)
 
     print()
