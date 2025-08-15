@@ -1134,13 +1134,14 @@ def muse(data_json, tweet_modality="unimodal"):
     print('\nCondense the correction...')
     if ("NO NOTE NEEDED" in instance['correction']) or\
         ("NOT ENOUGH EVIDENCE TO WRITE A GOOD COMMUNITY NOTE" in instance['correction']):
+        print('\nNo need to condense')
         instance['condensed_correction'] = instance['correction']
     else:
         instance['condensed_correction'] = correction_condense(instance['correction'], llm_key)
     
-    # Identify the tags
-    print('\nIdentify the tags for the correction...')
-    instance['correction_tags'] = tags_identify(instance['correction'], llm_key)
+        # Identify the tags
+        print('\nIdentify the tags for the correction...')
+        instance['correction_tags'] = tags_identify(instance['correction'], llm_key)
 
     driver.quit()
     return instance['condensed_correction'], instance['correction_tags']
