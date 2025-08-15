@@ -150,23 +150,25 @@ def research_post_and_write_note(
     post_with_context: PostWithContext,
 ) -> NoteResult:
 
-    if len(post_with_context.post.media) > 0 and post_with_context.post.media.media_type != "photo":
-        return NoteResult(
-            post=post_with_context,
-            refusal="Currently testing posts with text and/or image(s) only.",
-        )
+    if len(post_with_context.post.media) > 0:
+        media_types = set([post_with_context.post.media[i].media_type for i in range(len(post_with_context.post.media))])
+        if media_types != {"photo"}:
+            return NoteResult(
+                post=post_with_context,
+                refusal="Currently testing posts with text and/or image(s) only.",
+            )
     
     # Check if the post has quoted_post or in_reply_to_post attributes
     if hasattr(post_with_context.post, "quoted_post") or\
         hasattr(post_with_context.post, "in_reply_to_post"):
         return NoteResult(
             post=post_with_context,
-            refusal="Currently testing only standalone posts; skipping posts that reply to other posts.",
+            refusal="Currently testing posts with text and/or image(s) only.",
         )
     if contains_link(post_with_context.post.text):
         return NoteResult(
             post=post_with_context,
-            refusal="Currently testing only posts without links; skipping posts that contain links.",
+            refusal="Currently testing posts with text and/or image(s) only.",
         )
 
     input_data = [
