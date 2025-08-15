@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  regular_run:
+  deploy:
     runs-on: ubuntu-latest
     environment: MUSE
     steps:
