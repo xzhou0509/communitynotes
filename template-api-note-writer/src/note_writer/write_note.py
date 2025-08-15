@@ -150,10 +150,10 @@ def research_post_and_write_note(
     post_with_context: PostWithContext,
 ) -> NoteResult:
 
-    if len(post_with_context.post.media) != 0:
+    if len(post_with_context.post.media) > 0 and post_with_context.post.media.media_type != "photo":
         return NoteResult(
             post=post_with_context,
-            refusal="Currently testing only text-only posts; skipping posts with media.",
+            refusal="Currently testing posts with text and/or image(s) only.",
         )
     
     # Check if the post has quoted_post or in_reply_to_post attributes
