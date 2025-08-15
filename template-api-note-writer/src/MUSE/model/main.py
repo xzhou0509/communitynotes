@@ -1136,6 +1136,7 @@ def muse(data_json, tweet_modality="unimodal"):
         ("NOT ENOUGH EVIDENCE TO WRITE A GOOD COMMUNITY NOTE" in instance['correction']):
         print('\nNo need to condense')
         instance['condensed_correction'] = instance['correction']
+        instance['correction_tags'] = "No need to identify tags"
     else:
         instance['condensed_correction'] = correction_condense(instance['correction'], llm_key)
     
