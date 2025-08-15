@@ -1126,8 +1126,8 @@ def muse(data_json, tweet_modality="unimodal"):
     print(instance['tweet_id'])
     print(instance['correction'])
 
-    print('Uncondensed correction:')
-    print(instance['correction'])
+    # print('Uncondensed correction:')
+    # print(instance['correction'])
     print('---')
 
     # Condense the correction

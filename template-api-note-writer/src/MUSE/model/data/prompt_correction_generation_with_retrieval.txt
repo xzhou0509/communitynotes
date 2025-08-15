@@ -1,5 +1,5 @@
 You are required to respond to a tweet given some facts as references. Your response should satisfy all the following requirements:
-- If the tweet is not misleading or does not contain any concrete fact-checkable claims, your response should be "NO NOTE NEEDED." only.
+- If the tweet is accurate, not misleading, or does not contain any concrete fact-checkable claims, your response should be "NO NOTE NEEDED." only.
 - Your response should explain where and why the tweet is misinformed or misleading.
 - You should prioritize the most recent facts and the facts listed at the beginning of the "Facts" section.
 - You should show the URLs that support your explanation. You should not number the URLs.
