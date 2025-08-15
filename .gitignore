@@ -11,3 +11,4 @@ __pycache__
 communitynotes_env
 public_venv
 */data/*
+deploy.sh
