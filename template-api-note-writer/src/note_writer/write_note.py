@@ -141,6 +141,20 @@ def research_post_and_write_note(
     post_with_context: PostWithContext,
 ) -> NoteResult:
 
+    if len(post_with_context.post.media) != 0:
+        return NoteResult(
+            post=post_with_context,
+            refusal="Currently testing only text-only posts; skipping posts with media.",
+        )
+    
+    # Check if the post has quoted_post or in_reply_to_post attributes
+    if hasattr(post_with_context.post, "quoted_post") or\
+        hasattr(post_with_context.post, "in_reply_to_post"):
+        return NoteResult(
+            post=post_with_context,
+            refusal="Currently testing only standalone posts; skipping posts that reply to other posts.",
+        )
+
     input_data = [
         {
             "tweet_id": post_with_context.post.post_id,
@@ -148,7 +162,8 @@ def research_post_and_write_note(
             "created_time": str(post_with_context.post.created_at.strftime("%Y-%m-%d %H:%M:%S")),
             "user_description": None,
             "user_name": None,
-            "user_screen_name": None
+            "user_screen_name": None,
+            "tweet_modality": 'unimodal'
         }
     ]
 
@@ -158,8 +173,8 @@ def research_post_and_write_note(
     post_with_context_description = None
     note_or_refusal_str, misleading_tags = muse(input_data)
 
-    print(note_or_refusal_str)
-    print(misleading_tags)
+    print("Final MUSE output:", note_or_refusal_str)
+    print("Final MUSE tags:", misleading_tags)
 
     if ("NO NOTE NEEDED" in note_or_refusal_str) or (
         "NOT ENOUGH EVIDENCE TO WRITE A GOOD COMMUNITY NOTE" in note_or_refusal_str

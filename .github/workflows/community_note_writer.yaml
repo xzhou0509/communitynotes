@@ -57,7 +57,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OpenAI_API_KEY }}
           SERP_API_KEY: ${{ secrets.SERP_API_KEY }}
-          GOOGLESEARCH_KEY: ${{ secrets.GoogleSearch_Key }}
-          GOOGLESEARCH_HIGH: ${{ secrets.GoogleSearch_High-Priority }}
-          GOOGLESEARCH_MEDIUM: ${{ secrets.GoogleSearch_Medium-Priority }}
-          GOOGLESEARCH_LOW: ${{ secrets.GoogleSearch_Low-Priority }}
+          GOOGLESEARCH_KEY: ${{ secrets.GOOGLESEARCH_KEY }}
+          GOOGLESEARCH_HIGH: ${{ secrets.GOOGLESEARCH_HIGH }}
+          GOOGLESEARCH_MEDIUM: ${{ secrets.GOOGLESEARCH_MEDIUM }}
+          GOOGLESEARCH_LOW: ${{ secrets.GOOGLESEARCH_LOW }}

@@ -28,7 +28,8 @@ from transformers import pipeline
 from huggingface_hub import InferenceClient
 from openai import OpenAI
 from selenium.webdriver.firefox.service import Service
-
+import html5lib
+import psutil
 
 _CTX = multiprocessing.get_context("spawn")
 _POOL = None
@@ -52,6 +53,18 @@ def shutdown_pool():
         _POOL.join()
         _POOL = None
 
+def get_system_memory_gb():
+    """
+    Retrieves and returns total, available, and used system memory in GB.
+    """
+    memory_info = psutil.virtual_memory()
+
+    total_gb = memory_info.total / (1024**3)
+    available_gb = memory_info.available / (1024**3)
+    used_gb = memory_info.used / (1024**3)
+
+    return [total_gb, available_gb, used_gb]
+
 def llama(api_key, prompt):
     client = InferenceClient("meta-llama/Meta-Llama-3.1-70B-Instruct", token=api_key)
     response = []
@@ -74,18 +87,19 @@ def gpt(api_key, prompt):
         try:
             client = OpenAI(api_key=api_key.strip(), timeout=10)
             response = client.chat.completions.create(
-                model='gpt-4o',
+                model=os.getenv('OPENAI_MODEL', 'gpt-4o').strip(),
                 messages=[{'role': 'user', 'content': prompt}],
-                temperature=0
             )
             message = response.choices[0].message.content
             return message
         except Exception as e:
-            print('\t'+str(e))
+            print('Calling gpt function error '+str(e))
+            print('Retrying ' + str(curr_tries) + '/' + str(max_retries) + '...')
+            print("Model: ",os.getenv('OPENAI_MODEL', 'gpt-5').strip())
             curr_tries += 1
             time.sleep(5)
             continue
-    return ''
+    raise Exception('gpt function failed after max retries')
 
 
 def image2text(tweet, llm_key):
@@ -247,16 +261,8 @@ def query_generation(tweet, llm_key):
                                      # convert timestamp to datetime
                                      datetime.strptime(tweet['created_time'], '%Y-%m-%d %H:%M:%S'))
         # Load the prompt template
-        prompt_format = """[POST_CONTENT]
-
-Given a tweet, you are required to generate three different queries from the tweet for the Google Search Engine to get the most relevant web content to fact-check the tweet. Your answer should follow the following format:
-
-1. QUERY_1
-2. QUERY_2
-3. QUERY_3
-Where QUERY_1, QUERY_2, and QUERY_3 represent query text without quotation marks.
-
-If the given tweet is not informative enough to generate a query, you should answer "NONE"."""
+        with open('data/prompt_query_generation_unimodal.txt', 'r') as f:
+            prompt_format = f.read()
     elif tweet['tweet_modality'] == 'multimodal':
         post_content = mm_tweet_prep(p.clean(tweet['tweet_text']),
                                      ' '.join(tweet['tweet_image2text']),
@@ -470,8 +476,17 @@ def article_crawler(article_urls, driver):
                 driver.get(article_url)
             except Exception as e:
                 print('\t(fail to get ' + article_url + ')')
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            article = NewsPlease.from_html(soup.prettify(), article_url).get_dict()
+            try:
+                soup = BeautifulSoup(driver.page_source, 'html.parser')
+                article = NewsPlease.from_html(soup.prettify(), article_url).get_dict()
+            except:
+                raw_html = driver.page_source
+                errorchars = {**{i: None for i in range(0, 9)}, **{11: None, 12: None}, **{i: None for i in range(14, 32)}, 127: None}
+                clean_html = raw_html.translate(errorchars)
+                normalized_html = BeautifulSoup(clean_html, "html5lib").decode()
+                html_for_np = normalized_html
+
+                article = NewsPlease.from_html(html_for_np, article_url).get_dict()
 
             saved_articles[article_url] = article
             with open(articles_json, 'w') as f:
@@ -802,7 +817,13 @@ def tags_identify(correction, llm_key):
     prompt = prompt.replace('[RESPONSE]', correction)
     tags = gpt(llm_key, prompt)
     print("\t(sent 1 request to llm)")
-    return json.loads(tags)
+    try:
+        tags_parsed = json.loads(tags)
+    except:
+        print('\t(fail to parse tags, return NONE)')
+        print(tags)
+        return []
+    return tags_parsed
 
 def muse(data_json, tweet_modality="unimodal"):
 
@@ -813,13 +834,13 @@ def muse(data_json, tweet_modality="unimodal"):
     instance['tweet_modality'] = tweet_modality
 
     api_keys = {
-        "OpenAI": os.environ["OPENAI_API_KEY"],
-        "SerpAPI": os.environ["SERP_API_KEY"],
+        "OpenAI": os.environ["OPENAI_API_KEY"].strip(),
+        "SerpAPI": os.environ["SERP_API_KEY"].strip(),
         "GoogleSearch": {
-            "Key": os.environ["GOOGLESEARCH_KEY"],
-            "High-Priority" : os.environ["GOOGLESEARCH_HIGH"],
-            "Medium-Priority" : os.environ["GOOGLESEARCH_MEDIUM"],
-            "Low-Priority" : os.environ["GOOGLESEARCH_LOW"]
+            "Key": os.environ["GOOGLESEARCH_KEY"].strip(),
+            "High-Priority" : os.environ["GOOGLESEARCH_HIGH"].strip(),
+            "Medium-Priority" : os.environ["GOOGLESEARCH_MEDIUM"].strip(),
+            "Low-Priority" : os.environ["GOOGLESEARCH_LOW"].strip()
         }
     }
 
@@ -837,19 +858,23 @@ def muse(data_json, tweet_modality="unimodal"):
 
     # Set the number of processes = 5
     ctx = multiprocessing.get_context("spawn")
-    with ctx.Pool(processes=5) as pool:
+    threads = max(min(os.cpu_count(), int(get_system_memory_gb()[1])), 1)
+    print("{} CPU cores and {} GB memory detected, use {} threads.".format(os.cpu_count(), int(get_system_memory_gb()[1]), threads))
+    with ctx.Pool(processes=threads) as pool:
         if instance['tweet_modality'] == 'unimodal':
 
             print('Start correcting unimodal misinformation...')
 
             print('Generate queries from misinformation...')
             instance['queries'] = query_generation(instance, llm_key)
+            print("Query generated:\n" + instance['queries'])
+            if not instance['queries']:
+                print('---------------(no query generated)---------------')
 
             refute_evidences, context_evidences = set(), set()
             for domain_priority in ['High', 'Medium', 'Low']:
                 print('Search web pages with ' + domain_priority + ' priority...')
                 search_results = query_search(gsearch_key, api_keys['GoogleSearch'][domain_priority+'-Priority'], instance, domain_priority)
-
                 print('Start selecting retrieved web pages...')
 
                 # Filtered based on their similarities with the query
@@ -1101,9 +1126,17 @@ def muse(data_json, tweet_modality="unimodal"):
     print(instance['tweet_id'])
     print(instance['correction'])
 
+    print('Uncondensed correction:')
+    print(instance['correction'])
+    print('---')
+
     # Condense the correction
     print('\nCondense the correction...')
-    instance['condensed_correction'] = correction_condense(instance['correction'], llm_key)
+    if ("NO NOTE NEEDED" in instance['correction']) or\
+        ("NOT ENOUGH EVIDENCE TO WRITE A GOOD COMMUNITY NOTE" in instance['correction']):
+        instance['condensed_correction'] = instance['correction']
+    else:
+        instance['condensed_correction'] = correction_condense(instance['correction'], llm_key)
     
     # Identify the tags
     print('\nIdentify the tags for the correction...')
