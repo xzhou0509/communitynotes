@@ -153,6 +153,7 @@ def research_post_and_write_note(
     if len(post_with_context.post.media) > 0:
         media_types = set([post_with_context.post.media[i].media_type for i in range(len(post_with_context.post.media))])
         if media_types != {"photo"}:
+            print(media_types)
             return NoteResult(
                 post=post_with_context,
                 refusal="Currently testing posts with text and/or image(s) only.",
