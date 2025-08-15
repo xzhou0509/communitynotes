@@ -7,6 +7,15 @@ from note_writer.llm_util import (
 from note_writer.misleading_tags import get_misleading_tags
 from MUSE.model.main import muse
 from datetime import datetime
+import re
+
+def contains_link(text: str) -> bool:
+    # Regex pattern to detect HTTP/HTTPS or www. links
+    pattern = re.compile(
+        r'(https?://[^\s]+|www\.[^\s]+)',
+        re.IGNORECASE
+    )
+    return bool(pattern.search(text))
 
 def _get_prompt_for_note_writing(post_with_context_description: str, search_results: str):
     return f"""Below will be a post on X, and live search results from the web. \
@@ -153,6 +162,11 @@ def research_post_and_write_note(
         return NoteResult(
             post=post_with_context,
             refusal="Currently testing only standalone posts; skipping posts that reply to other posts.",
+        )
+    if contains_link(post_with_context.post.text):
+        return NoteResult(
+            post=post_with_context,
+            refusal="Currently testing only posts without links; skipping posts that contain links.",
         )
 
     input_data = [
