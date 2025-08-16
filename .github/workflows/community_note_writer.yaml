@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  run-muse-bot:
     runs-on: ubuntu-latest
     environment: MUSE
     steps:
@@ -51,7 +51,7 @@ jobs:
           cp -r src/MUSE/model/data data
 
       - name: Run bot
-        run: cd template-api-note-writer && uv run src/main.py --dry-run
+        run: cd template-api-note-writer && uv run src/main.py --dry-run --num_posts 100
         # Read the environment variables from the github repository.
         # Store under Settings --> Secrets and variables --> Actions
         env:
